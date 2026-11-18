@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Sprite Stack Wallpaper",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "identifier": "com.lyre3.spritestack.wallpaper",
   "build": {
     "frontendDist": "../frontend"
@@ -19,11 +19,17 @@
         "shadow": false
       }
     ],
-    "security": { "csp": null }
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg", "nsis"],
+    "targets": [
+      "app",
+      "dmg",
+      "nsis"
+    ],
     "shortDescription": "変形戦闘機が海の上を飛び続けるライブ壁紙",
     "longDescription": "スプライトスタック試作（WebGL）の壁紙モードをデスクトップの壁紙として表示するアプリ。自動操縦で飛び続け、昼夜は本当の時計と連動し、たまに自動で変形します。"
   }

@@ -84,6 +84,15 @@ fn main() {
                         }
                     });
                 }
+                // 終了: Ctrl+Alt+Q（Macでは Command+Option+Q）
+                {
+                    let handle = app.handle().clone();
+                    let _ = gs.on_shortcut("CmdOrCtrl+Alt+KeyQ", move |_app, _sc, event| {
+                        if event.state() == ShortcutState::Pressed {
+                            handle.exit(0);
+                        }
+                    });
+                }
             }
             Ok(())
         })

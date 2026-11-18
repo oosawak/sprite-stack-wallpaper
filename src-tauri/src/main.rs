@@ -17,8 +17,45 @@ fn monitor_index() -> usize {
         .unwrap_or(0)
 }
 
+// 指定した番号のモニタへウィンドウを移す（0がメイン画面）
+fn move_to_monitor(win: &tauri::WebviewWindow, idx: usize) {
+    if let Ok(monitors) = win.available_monitors() {
+        if let Some(m) = monitors.get(idx).or_else(|| monitors.first()) {
+            let pos = m.position();
+            let size = m.size();
+            let _ = win.set_position(*pos);
+            let _ = win.set_size(*size);
+            #[cfg(target_os = "windows")]
+            win32_place(win, (pos.x, pos.y, size.width as i32, size.height as i32));
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn win32_place(win: &tauri::WebviewWindow, rect: (i32, i32, i32, i32)) {
+    use std::ffi::c_void;
+    type Hwnd = *mut c_void;
+    extern "system" {
+        fn SetWindowPos(hwnd: Hwnd, after: Hwnd, x: i32, y: i32, cx: i32, cy: i32, flags: u32) -> i32;
+    }
+    unsafe {
+        let hwnd = win.hwnd().unwrap().0 as Hwnd;
+        SetWindowPos(hwnd, std::ptr::null_mut(), rect.0, rect.1, rect.2, rect.3, 0x0010 | 0x0040);
+    }
+}
+
+// Web側の数字キーから呼ばれるコマンド
+#[tauri::command]
+fn set_monitor(app: tauri::AppHandle, n: usize) {
+    if let Some(w) = app.get_webview_window("main") {
+        move_to_monitor(&w, n);
+    }
+}
+
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![set_monitor])
         .setup(|app| {
             if let Some(win) = app.get_webview_window("main") {
                 let mut rect = None;
@@ -32,6 +69,21 @@ fn main() {
                     }
                 }
                 attach_to_desktop(&win, rect);
+            }
+            // フォーカスが無くても効く切り替え: Ctrl+Alt+1/2/3
+            {
+                use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+                let gs = app.handle().global_shortcut();
+                for (i, sc) in ["CmdOrCtrl+Alt+Digit1", "CmdOrCtrl+Alt+Digit2", "CmdOrCtrl+Alt+Digit3"].iter().enumerate() {
+                    let handle = app.handle().clone();
+                    let _ = gs.on_shortcut(*sc, move |_app, _sc, event| {
+                        if event.state() == ShortcutState::Pressed {
+                            if let Some(w) = handle.get_webview_window("main") {
+                                move_to_monitor(&w, i);
+                            }
+                        }
+                    });
+                }
             }
             Ok(())
         })

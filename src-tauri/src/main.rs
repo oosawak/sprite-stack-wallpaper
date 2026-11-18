@@ -84,6 +84,17 @@ fn main() {
                         }
                     });
                 }
+                // ショートカット一覧の表示切替: Ctrl+Alt+0（Macでは Command+Option+0）
+                {
+                    let handle = app.handle().clone();
+                    let _ = gs.on_shortcut("CmdOrCtrl+Alt+Digit0", move |_app, _sc, event| {
+                        if event.state() == ShortcutState::Pressed {
+                            if let Some(w) = handle.get_webview_window("main") {
+                                let _ = w.eval("window.__toggleHelp && window.__toggleHelp()");
+                            }
+                        }
+                    });
+                }
                 // 終了: Ctrl+Alt+Q（Macでは Command+Option+Q）
                 {
                     let handle = app.handle().clone();

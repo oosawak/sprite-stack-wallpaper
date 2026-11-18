@@ -1,0 +1,31 @@
+name: audit
+permissions:
+  contents: read
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "10 1 * * 1"
+  push:
+    branches: [main]
+    paths:
+      - "src-tauri/Cargo.toml"
+      - "src-tauri/Cargo.lock"
+jobs:
+  cargo-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@cargo-audit
+      - name: cargo audit (JSON report)
+        working-directory: src-tauri
+        run: |
+          cargo audit --json > ../audit-report.json || true
+          cat ../audit-report.json | head -c 2000
+      - name: cargo audit (fail on vulnerabilities)
+        working-directory: src-tauri
+        run: cargo audit
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit-report
+          path: audit-report.json

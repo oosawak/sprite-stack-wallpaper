@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>スプライトスタック試作 v0.29 (three.js)</title>
+<title>スプライトスタック試作 v0.30 (three.js)</title>
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #123; overflow: hidden; }
   canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; touch-action: none; }
@@ -61,7 +61,8 @@
 <div id="banner"></div>
 <script type="module">
 import * as THREE from 'three';
-// ===== スプライトスタック試作 v0.29 (three.js 版) =====
+// ===== スプライトスタック試作 v0.30 (three.js 版) =====
+// v0.30: 壁紙ミッションで中間形態とロボットが止まったままだったのを修正（両形態は長押し中だけ前進する作りで、自動操縦では前進しなかった）。ミッション中は自動で目標へ前進する。あわせてロボットのレーザー照準のカメラ高さの見積もりを修正。
 // v0.29: 壁紙ミッションは戦闘機へ変形を強制せず、今の形態のまま戦う。中間形態はガトリング、ロボットは照準の上下を目標に合わせてレーザーで撃つ。
 // v0.28: 壁紙モードに自動ミッションを追加。時間が来ると「ミッション ― 敵機を迎撃せよ／戦艦を撃沈せよ」の帯が出て、自機が自律的に出撃・解決し、哨戒に戻る。操作すると30秒だけ手動操縦に切り替わる（たまに遊べる壁紙）。
 // v0.27: 壁紙モード（#wallpaper）を追加。UIを全部隠し、自動操縦で飛び続け、昼夜は本当の時計と連動し、約24秒ごとに自動で変形する。30fpsに抑えて負荷を下げてある。Wallpaper EngineやLively Wallpaper等のWeb壁紙として使える。
@@ -898,7 +899,7 @@ function updateMission(dt) {
   while (dA < -Math.PI) dA += Math.PI * 2;
   if (st.form === 2) {
     // ロボットはレーザーで戦う: 照準の上下を目標に合わせる（カメラ位置ぶんの補正つき）
-    st.aimPitch = Math.max(-0.85, Math.min(0.85, Math.atan2(tAlt - (st.alt + 36.5), Math.max(dist, 1)) + 0.12));
+    st.aimPitch = Math.max(-0.85, Math.min(0.85, Math.atan2(tAlt - (st.alt + 24.5), Math.max(dist, 1)) + 0.12));
     firing = Math.abs(dA) < 0.3 && dist < 430;
   } else {
     // 戦闘機は連装砲、中間形態はガトリング（どちらも機首方向）
@@ -1120,7 +1121,8 @@ function frame(now) {
   const boosting = (pressing || keys['Space']) && st.morph < 0;
   // 中間形態とロボット形態は止まれる: 長押しのときだけ進み、離すと減速してその場でホバーする
   // 戦闘機だけは止まれず、まっすぐ飛び続ける
-  const targetSpeed = st.form === 0 ? (boosting ? 300 : 130) : (boosting ? 300 * FORM_SPEED[st.form] : 0);
+  const autoMove = WP && !!st.mission && wpWant !== null; // 壁紙ミッション中は自動で前進する
+  const targetSpeed = st.form === 0 ? (boosting ? 300 : 130) : ((boosting || autoMove) ? 300 * FORM_SPEED[st.form] : 0);
   if (st.curSpeed === undefined) st.curSpeed = targetSpeed;
   st.curSpeed += (targetSpeed - st.curSpeed) * Math.min(1, dt * 2.2);
   const speed = st.curSpeed;
@@ -1508,7 +1510,7 @@ function frame(now) {
   }
   const wantJumpBtn = st.form === 2 && st.morph < 0 ? 'block' : 'none';
   if (btn7El.style.display !== wantJumpBtn) btn7El.style.display = wantJumpBtn;
-  hud.textContent = `SPRITE STACK PROTO v0.29 (three.js)\nFORM: ${FORM_NAMES[st.form]}${boosting ? (st.form === 0 ? '  BOOST!' : '  MOVE') : ''}${st.form > 0 && speed < 4 && st.morph < 0 ? '  STOP' : ''}${st.form < 2 ? '  ALT ' + Math.round(st.alt) : ''}${st.form === 2 ? '  HEAT ' + '▮'.repeat(Math.round((st.heat || 0) * 8)) + (st.over ? ' OVER!' : '') : ''}${st.roll >= 0 ? '  ROLL!' : ''}${st.dodgeT > 0 ? '  DODGE!' : ''}${guardingNow ? '  GUARD' : ''}  VIEW: ${st.view === 1 ? 'TOP' : (st.form === 2 ? 'FPS' : 'CHASE')}  ${nf > 0.5 ? 'NIGHT' : 'DAY'}\nSHIP: ${shipState} HP ${'♥'.repeat(Math.max(0, ship.hp))}  ${arrow} ${sDist}m  ENEMY: ${enemies.filter(e => e.alive).length}`;
+  hud.textContent = `SPRITE STACK PROTO v0.30 (three.js)\nFORM: ${FORM_NAMES[st.form]}${boosting ? (st.form === 0 ? '  BOOST!' : '  MOVE') : ''}${st.form > 0 && speed < 4 && st.morph < 0 ? '  STOP' : ''}${st.form < 2 ? '  ALT ' + Math.round(st.alt) : ''}${st.form === 2 ? '  HEAT ' + '▮'.repeat(Math.round((st.heat || 0) * 8)) + (st.over ? ' OVER!' : '') : ''}${st.roll >= 0 ? '  ROLL!' : ''}${st.dodgeT > 0 ? '  DODGE!' : ''}${guardingNow ? '  GUARD' : ''}  VIEW: ${st.view === 1 ? 'TOP' : (st.form === 2 ? 'FPS' : 'CHASE')}  ${nf > 0.5 ? 'NIGHT' : 'DAY'}\nSHIP: ${shipState} HP ${'♥'.repeat(Math.max(0, ship.hp))}  ${arrow} ${sDist}m  ENEMY: ${enemies.filter(e => e.alive).length}`;
   drawRadar();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);

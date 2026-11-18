@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>スプライトスタック試作 v0.33 (three.js)</title>
+<title>スプライトスタック試作 v0.34 (three.js)</title>
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #123; overflow: hidden; }
   canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; touch-action: none; }
@@ -34,9 +34,10 @@
   #joyKnob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(174,244,255,.5); border: 2px solid rgba(255,255,255,.6); }
   @media (pointer: coarse) { #joy { display: block; } }
   body.wp #hud, body.wp #help, body.wp .btn, body.wp #joy, body.wp #radar, body.wp #cross { display: none !important; }
+  body.wp.wpdebug #hud, body.wp.wpdebug #radar { display: block !important; }
   #banner { position: fixed; left: 50%; bottom: 9%; transform: translateX(-50%); padding: 10px 26px; background: rgba(8,12,24,.55); color: #eaf6ff; font-size: 19px; letter-spacing: .14em; border: 1px solid rgba(174,244,255,.35); border-radius: 6px; opacity: 0; transition: opacity .8s; pointer-events: none; z-index: 7; display: none; white-space: nowrap; }
   body.wp #banner { display: block; }
-  #wpHint { position: fixed; right: 14px; bottom: 12px; color: rgba(234,246,255,.55); font-size: 13px; letter-spacing: .08em; display: none; z-index: 7; pointer-events: none; }
+  #wpHint { position: fixed; right: 14px; bottom: 12px; color: rgba(234,246,255,.55); font-size: 13px; letter-spacing: .08em; line-height: 1.8; text-align: right; display: none; z-index: 7; pointer-events: none; }
   body.wp #wpHint { display: block; }
   #radar {
     position: fixed; right: 10px; top: 10px; width: 118px; height: 118px;
@@ -61,10 +62,11 @@
 <div id="cross"></div>
 <div id="joy"><div id="joyKnob"></div></div>
 <div id="banner"></div>
-<div id="wpHint">Mキーで手動操縦</div>
+<div id="wpHint">Mキーで手動操縦<br>Dキーでレーダー・情報表示<br><span id="wpHintApp">Ctrl+Alt+数字で画面切り替え</span></div>
 <script type="module">
 import * as THREE from 'three';
-// ===== スプライトスタック試作 v0.33 (three.js 版) =====
+// ===== スプライトスタック試作 v0.34 (three.js 版) =====
+// v0.34: 壁紙モードの右下ヒントにキー操作をまとめ、Dキーでレーダーと情報表示を出せるようにした（普段は隠れている）。
 // v0.33: 壁紙ミッションの自動操縦に偏差射撃を入れた。目標の速度を推定して未来位置を狙う（今の位置を追うだけだと横切る敵に当たらなかった）。
 // v0.32: 中間形態のミッションは、敵が正面に入るまで前進せず回転して探し、ガトリングは広めの角度で撃ち始める。アプリ版では数字キーで表示モニタを切り替える。
 // v0.31: 壁紙の手動操縦はMキーを押したときだけ（30秒間）に変更。マウス移動やクリックでは操縦を奪わない。右下に「Mキーで手動操縦」の表示を出す。
@@ -793,6 +795,7 @@ cv.addEventListener('dblclick', () => startMorph());
 addEventListener('keydown', e => {
   if (e.code === 'KeyC' && !keys['KeyC']) tryJump();
   if (WP && e.code === 'KeyM') st.wpManualUntil = tNow + 30; // 壁紙の手動操縦はMキーのときだけ
+  if (WP && e.code === 'KeyD') document.body.classList.toggle('wpdebug'); // 壁紙でも情報とレーダーを出せる
   if (WP && /^Digit[1-3]$/.test(e.code) && window.__TAURI_INTERNALS__) {
     window.__TAURI_INTERNALS__.invoke('set_monitor', { n: Number(e.code.slice(5)) - 1 }).catch(() => {}); // アプリ版: 表示する画面の切り替え
   }
@@ -1105,6 +1108,7 @@ function drawRadar() {
 let tNow = 0, last = performance.now();
 const WP = location.hash === '#wallpaper' || new URLSearchParams(location.search).has('wallpaper');
 if (WP) document.body.classList.add('wp');
+if (!window.__TAURI_INTERNALS__) { const el = document.getElementById('wpHintApp'); if (el) el.style.display = 'none'; } // Ctrl+Alt+数字はアプリ版だけ
 const camPos = new THREE.Vector3(0, 30, 60);
 const camTarget = new THREE.Vector3();
 const ARROWS = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
@@ -1543,7 +1547,7 @@ function frame(now) {
   }
   const wantJumpBtn = st.form === 2 && st.morph < 0 ? 'block' : 'none';
   if (btn7El.style.display !== wantJumpBtn) btn7El.style.display = wantJumpBtn;
-  hud.textContent = `SPRITE STACK PROTO v0.33 (three.js)\nFORM: ${FORM_NAMES[st.form]}${boosting ? (st.form === 0 ? '  BOOST!' : '  MOVE') : ''}${st.form > 0 && speed < 4 && st.morph < 0 ? '  STOP' : ''}${st.form < 2 ? '  ALT ' + Math.round(st.alt) : ''}${st.form === 2 ? '  HEAT ' + '▮'.repeat(Math.round((st.heat || 0) * 8)) + (st.over ? ' OVER!' : '') : ''}${st.roll >= 0 ? '  ROLL!' : ''}${st.dodgeT > 0 ? '  DODGE!' : ''}${guardingNow ? '  GUARD' : ''}  VIEW: ${st.view === 1 ? 'TOP' : (st.form === 2 ? 'FPS' : 'CHASE')}  ${nf > 0.5 ? 'NIGHT' : 'DAY'}\nSHIP: ${shipState} HP ${'♥'.repeat(Math.max(0, ship.hp))}  ${arrow} ${sDist}m  ENEMY: ${enemies.filter(e => e.alive).length}`;
+  hud.textContent = `SPRITE STACK PROTO v0.34 (three.js)\nFORM: ${FORM_NAMES[st.form]}${boosting ? (st.form === 0 ? '  BOOST!' : '  MOVE') : ''}${st.form > 0 && speed < 4 && st.morph < 0 ? '  STOP' : ''}${st.form < 2 ? '  ALT ' + Math.round(st.alt) : ''}${st.form === 2 ? '  HEAT ' + '▮'.repeat(Math.round((st.heat || 0) * 8)) + (st.over ? ' OVER!' : '') : ''}${st.roll >= 0 ? '  ROLL!' : ''}${st.dodgeT > 0 ? '  DODGE!' : ''}${guardingNow ? '  GUARD' : ''}  VIEW: ${st.view === 1 ? 'TOP' : (st.form === 2 ? 'FPS' : 'CHASE')}  ${nf > 0.5 ? 'NIGHT' : 'DAY'}\nSHIP: ${shipState} HP ${'♥'.repeat(Math.max(0, ship.hp))}  ${arrow} ${sDist}m  ENEMY: ${enemies.filter(e => e.alive).length}`;
   drawRadar();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);

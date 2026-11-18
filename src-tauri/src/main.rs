@@ -2,11 +2,36 @@
 
 use tauri::Manager;
 
+// 表示する画面の指定: 起動引数 --monitor=N か環境変数 WALLPAPER_MONITOR=N（0がメイン画面）
+fn monitor_index() -> usize {
+    for a in std::env::args() {
+        if let Some(v) = a.strip_prefix("--monitor=") {
+            if let Ok(n) = v.parse() {
+                return n;
+            }
+        }
+    }
+    std::env::var("WALLPAPER_MONITOR")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
             if let Some(win) = app.get_webview_window("main") {
-                attach_to_desktop(&win);
+                let mut rect = None;
+                if let Ok(monitors) = win.available_monitors() {
+                    if let Some(m) = monitors.get(monitor_index()).or_else(|| monitors.first()) {
+                        let pos = m.position();
+                        let size = m.size();
+                        let _ = win.set_position(*pos);
+                        let _ = win.set_size(*size);
+                        rect = Some((pos.x, pos.y, size.width as i32, size.height as i32));
+                    }
+                }
+                attach_to_desktop(&win, rect);
             }
             Ok(())
         })
@@ -16,7 +41,7 @@ fn main() {
 
 // ===== macOS: NSWindow をデスクトップレベルへ下げて壁紙化する =====
 #[cfg(target_os = "macos")]
-fn attach_to_desktop(win: &tauri::WebviewWindow) {
+fn attach_to_desktop(win: &tauri::WebviewWindow, _rect: Option<(i32, i32, i32, i32)>) {
     use objc::{msg_send, sel, sel_impl};
     #[link(name = "CoreGraphics", kind = "framework")]
     extern "C" {
@@ -35,7 +60,7 @@ fn attach_to_desktop(win: &tauri::WebviewWindow) {
 
 // ===== Windows: WorkerW を親にしてアイコンの背面へ入れる =====
 #[cfg(target_os = "windows")]
-fn attach_to_desktop(win: &tauri::WebviewWindow) {
+fn attach_to_desktop(win: &tauri::WebviewWindow, rect: Option<(i32, i32, i32, i32)>) {
     use std::ffi::c_void;
     type Hwnd = *mut c_void;
     extern "system" {
@@ -69,11 +94,11 @@ fn attach_to_desktop(win: &tauri::WebviewWindow) {
         EnumWindows(enum_cb, 0);
         if !WORKER.is_null() {
             SetParent(hwnd, WORKER);
-            let (w, h) = (GetSystemMetrics(0), GetSystemMetrics(1));
-            SetWindowPos(hwnd, std::ptr::null_mut(), 0, 0, w, h, 0x0010 | 0x0040);
+            let (x, y, w, h) = rect.unwrap_or((0, 0, GetSystemMetrics(0), GetSystemMetrics(1)));
+            SetWindowPos(hwnd, std::ptr::null_mut(), x, y, w, h, 0x0010 | 0x0040);
         }
     }
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-fn attach_to_desktop(_win: &tauri::WebviewWindow) {}
+fn attach_to_desktop(_win: &tauri::WebviewWindow, _rect: Option<(i32, i32, i32, i32)>) {}

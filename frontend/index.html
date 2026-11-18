@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>スプライトスタック試作 v0.30 (three.js)</title>
+<title>スプライトスタック試作 v0.31 (three.js)</title>
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #123; overflow: hidden; }
   canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; touch-action: none; }
@@ -36,6 +36,8 @@
   body.wp #hud, body.wp #help, body.wp .btn, body.wp #joy, body.wp #radar, body.wp #cross { display: none !important; }
   #banner { position: fixed; left: 50%; bottom: 9%; transform: translateX(-50%); padding: 10px 26px; background: rgba(8,12,24,.55); color: #eaf6ff; font-size: 19px; letter-spacing: .14em; border: 1px solid rgba(174,244,255,.35); border-radius: 6px; opacity: 0; transition: opacity .8s; pointer-events: none; z-index: 7; display: none; white-space: nowrap; }
   body.wp #banner { display: block; }
+  #wpHint { position: fixed; right: 14px; bottom: 12px; color: rgba(234,246,255,.55); font-size: 13px; letter-spacing: .08em; display: none; z-index: 7; pointer-events: none; }
+  body.wp #wpHint { display: block; }
   #radar {
     position: fixed; right: 10px; top: 10px; width: 118px; height: 118px;
     border-radius: 50%; border: 2px solid rgba(140,255,180,0.5); pointer-events: none;
@@ -59,9 +61,11 @@
 <div id="cross"></div>
 <div id="joy"><div id="joyKnob"></div></div>
 <div id="banner"></div>
+<div id="wpHint">Mキーで手動操縦</div>
 <script type="module">
 import * as THREE from 'three';
-// ===== スプライトスタック試作 v0.30 (three.js 版) =====
+// ===== スプライトスタック試作 v0.31 (three.js 版) =====
+// v0.31: 壁紙の手動操縦はMキーを押したときだけ（30秒間）に変更。マウス移動やクリックでは操縦を奪わない。右下に「Mキーで手動操縦」の表示を出す。
 // v0.30: 壁紙ミッションで中間形態とロボットが止まったままだったのを修正（両形態は長押し中だけ前進する作りで、自動操縦では前進しなかった）。ミッション中は自動で目標へ前進する。あわせてロボットのレーザー照準のカメラ高さの見積もりを修正。
 // v0.29: 壁紙ミッションは戦闘機へ変形を強制せず、今の形態のまま戦う。中間形態はガトリング、ロボットは照準の上下を目標に合わせてレーザーで撃つ。
 // v0.28: 壁紙モードに自動ミッションを追加。時間が来ると「ミッション ― 敵機を迎撃せよ／戦艦を撃沈せよ」の帯が出て、自機が自律的に出撃・解決し、哨戒に戻る。操作すると30秒だけ手動操縦に切り替わる（たまに遊べる壁紙）。
@@ -762,6 +766,7 @@ if (location.hash === '#night') { st.nightTarget = 1; st.night = 1; }
 enemies.push(makeEnemy(0), makeEnemy(1), makeEnemy(2));
 let pointer = null, pressing = false, pressAt = 0, lastInput = -10, firing = false, prevX = false, pressType = 'touch', pointerFromJoy = false;
 let wpWant = null;
+let wpManualNow = false;
 const keys = {};
 addEventListener('pointermove', e => {
   if (e.pointerType === 'touch') return; // スマホの操縦はジョイスティックだけにする（指の位置で勝手に曲がらないように）
@@ -785,6 +790,7 @@ addEventListener('pointercancel', () => { firing = false; pressing = false; });
 cv.addEventListener('dblclick', () => startMorph());
 addEventListener('keydown', e => {
   if (e.code === 'KeyC' && !keys['KeyC']) tryJump();
+  if (WP && e.code === 'KeyM') st.wpManualUntil = tNow + 30; // 壁紙の手動操縦はMキーのときだけ
   keys[e.code] = true;
   if (e.code === 'KeyT') startMorph();
   if (e.code === 'KeyR') startRoll();
@@ -1093,10 +1099,12 @@ function frame(now) {
     const h = new Date().getHours() + new Date().getMinutes() / 60;
     st.nightTarget = (h >= 18.5 || h < 6) ? 1 : 0; // 昼夜は本当の時計と連動
     if (st.wpMorphT === undefined) { st.wpMorphT = tNow; st.nextMission = tNow + 18; }
-    const manual = lastInput > 0 && tNow - lastInput < 30; // 最近の操作があれば手動優先（たまに遊べる壁紙）
+    const manual = tNow < (st.wpManualUntil || 0); // 手動操縦はMキーを押したときだけ（30秒間）。マウス移動では操縦を奪わない
     if (manual && !st.wpManualPrev) showBanner('手動操縦中', 3);
+    if (!manual && st.wpManualPrev) showBanner('自動操縦に戻ります', 2.5);
     st.wpManualPrev = manual;
-    if (!manual) updateMission(dt);
+    wpManualNow = manual;
+    if (!manual) { if (!st.mission) firing = false; updateMission(dt); }
     else { wpWant = null; if (st.mission) firing = false; }
     if (!st.mission && !manual && st.morph < 0 && tNow - st.wpMorphT > 35) { st.wpMorphT = tNow; startMorph(); } // 哨戒中はたまに変形
   }
@@ -1104,7 +1112,7 @@ function frame(now) {
   // 操縦
   let want = st.angle;
   const steerGain = st.form === 1 ? 2.0 : st.form === 2 ? 1.3 : 1.0;
-  if (pointer && tNow - lastInput < 3) want = st.angle + (pointer.x - 0.5) * 2.2 * dt * 3 * steerGain;
+  if (pointer && tNow - lastInput < 3 && (!WP || wpManualNow)) want = st.angle + (pointer.x - 0.5) * 2.2 * dt * 3 * steerGain;
   else want = st.angle + Math.sin(tNow * 0.5) * 0.3 * dt;
   if (wpWant !== null) want = wpWant; // 壁紙ミッションの自動操縦
   const dc = Math.hypot(st.x, st.z);
@@ -1226,9 +1234,9 @@ function frame(now) {
   if (st.form < 2) {
     if (st.altT === undefined) { st.altT = st.alt; st.altV = 0; }
     if (joy.active) st.altT += -joy.dy * dt * 45;
-    else if (pointer && !pointerFromJoy && tNow - lastInput < 6) st.altT = 8 + (1 - pointer.y) * 52;
-    if (keys['ArrowUp']) st.altT = Math.min(60, st.altT + dt * 30);
-    if (keys['ArrowDown']) st.altT = Math.max(8, st.altT - dt * 30);
+    else if (pointer && !pointerFromJoy && tNow - lastInput < 6 && (!WP || wpManualNow)) st.altT = 8 + (1 - pointer.y) * 52;
+    if (keys['ArrowUp'] && (!WP || wpManualNow)) st.altT = Math.min(60, st.altT + dt * 30);
+    if (keys['ArrowDown'] && (!WP || wpManualNow)) st.altT = Math.max(8, st.altT - dt * 30);
     st.altT = Math.max(8, Math.min(60, st.altT));
     if (st.form === 1) {
       // 中間形態: 垂直にスッと動く（VTOLらしく目標高度へ直行）
@@ -1248,12 +1256,12 @@ function frame(now) {
   // 照準の上下（ロボットのレーザー用）
   if (st.aimPitch === undefined) st.aimPitch = 0;
   if (st.form === 2) {
-    if (pointer && tNow - lastInput < 6) {
+    if (pointer && tNow - lastInput < 6 && (!WP || wpManualNow)) {
       const tp = Math.max(-0.85, Math.min(0.85, (0.5 - pointer.y) * 1.1));
       st.aimPitch += (tp - st.aimPitch) * Math.min(1, dt * 8);
     }
-    if (keys['ArrowUp']) st.aimPitch = Math.min(0.85, st.aimPitch + dt * 1.3);
-    if (keys['ArrowDown']) st.aimPitch = Math.max(-0.85, st.aimPitch - dt * 1.3);
+    if (keys['ArrowUp'] && (!WP || wpManualNow)) st.aimPitch = Math.min(0.85, st.aimPitch + dt * 1.3);
+    if (keys['ArrowDown'] && (!WP || wpManualNow)) st.aimPitch = Math.max(-0.85, st.aimPitch - dt * 1.3);
   }
 
   // 武器は形態ごとに別物（戦闘機=連装砲 / 中間形態=ガトリング / ロボット=レーザー）
@@ -1510,7 +1518,7 @@ function frame(now) {
   }
   const wantJumpBtn = st.form === 2 && st.morph < 0 ? 'block' : 'none';
   if (btn7El.style.display !== wantJumpBtn) btn7El.style.display = wantJumpBtn;
-  hud.textContent = `SPRITE STACK PROTO v0.30 (three.js)\nFORM: ${FORM_NAMES[st.form]}${boosting ? (st.form === 0 ? '  BOOST!' : '  MOVE') : ''}${st.form > 0 && speed < 4 && st.morph < 0 ? '  STOP' : ''}${st.form < 2 ? '  ALT ' + Math.round(st.alt) : ''}${st.form === 2 ? '  HEAT ' + '▮'.repeat(Math.round((st.heat || 0) * 8)) + (st.over ? ' OVER!' : '') : ''}${st.roll >= 0 ? '  ROLL!' : ''}${st.dodgeT > 0 ? '  DODGE!' : ''}${guardingNow ? '  GUARD' : ''}  VIEW: ${st.view === 1 ? 'TOP' : (st.form === 2 ? 'FPS' : 'CHASE')}  ${nf > 0.5 ? 'NIGHT' : 'DAY'}\nSHIP: ${shipState} HP ${'♥'.repeat(Math.max(0, ship.hp))}  ${arrow} ${sDist}m  ENEMY: ${enemies.filter(e => e.alive).length}`;
+  hud.textContent = `SPRITE STACK PROTO v0.31 (three.js)\nFORM: ${FORM_NAMES[st.form]}${boosting ? (st.form === 0 ? '  BOOST!' : '  MOVE') : ''}${st.form > 0 && speed < 4 && st.morph < 0 ? '  STOP' : ''}${st.form < 2 ? '  ALT ' + Math.round(st.alt) : ''}${st.form === 2 ? '  HEAT ' + '▮'.repeat(Math.round((st.heat || 0) * 8)) + (st.over ? ' OVER!' : '') : ''}${st.roll >= 0 ? '  ROLL!' : ''}${st.dodgeT > 0 ? '  DODGE!' : ''}${guardingNow ? '  GUARD' : ''}  VIEW: ${st.view === 1 ? 'TOP' : (st.form === 2 ? 'FPS' : 'CHASE')}  ${nf > 0.5 ? 'NIGHT' : 'DAY'}\nSHIP: ${shipState} HP ${'♥'.repeat(Math.max(0, ship.hp))}  ${arrow} ${sDist}m  ENEMY: ${enemies.filter(e => e.alive).length}`;
   drawRadar();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
